@@ -30,6 +30,8 @@ Usage::
 
 from __future__ import annotations
 
+import colorsys
+
 import numpy as np
 
 from habitat_sim.simulation.engine import SimulationEngine
@@ -65,6 +67,32 @@ def _lines_to_scatter(segments: list[np.ndarray], **kwargs):
         zs.extend(seg[:, 2].tolist())
         zs.append(None)
     return go.Scatter3d(x=xs, y=ys, z=zs, mode="lines", **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Sector colour palette
+# ---------------------------------------------------------------------------
+
+def _sector_colours(n_angular: int, n_axial: int) -> list[str]:
+    """Return n_angular × n_axial CSS colour strings.
+
+    Each of the n_angular angular sectors gets a distinct hue; each of the
+    n_axial axial stations gets a distinct lightness so all combinations look
+    different at a glance.
+
+    Ordering: axial-major — colours[j * n_angular + i] is sector (angular=i,
+    axial=j).
+    """
+    # Lightness levels: bright → medium → dark as axial station increases
+    lum_levels = [0.72, 0.55, 0.40]
+    cols: list[str] = []
+    for j in range(n_axial):
+        lum = lum_levels[j % len(lum_levels)]
+        for i in range(n_angular):
+            hue = i / n_angular          # evenly spaced hues [0, 1)
+            r, g, b = colorsys.hls_to_rgb(hue, lum, 0.80)
+            cols.append(f"rgb({int(r * 255)},{int(g * 255)},{int(b * 255)})")
+    return cols
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +224,8 @@ class HabitatScene:
         # 1. Wireframe surface
         self._add_wireframe(fig, cfg.habitat)
 
-        # 2. Sector markers (body-frame positions; colour = occupant mass)
-        self._add_sector_markers(fig, engine.sector_positions, sector_masses)
+        # 2. Sector surfaces (body-frame patches; colour = sector identity)
+        self._add_sector_surfaces(fig, cfg.habitat, engine.sector_positions, sector_masses)
 
         # 3. Rim tank markers (colour = fill fraction)
         fill_level = tank_masses / cfg.tanks.tank_capacity
@@ -271,37 +299,107 @@ class HabitatScene:
             hoverinfo="skip",
         ))
 
-    def _add_sector_markers(
-        self, fig, positions: np.ndarray, masses: np.ndarray
+    def _add_sector_surfaces(
+        self,
+        fig,
+        hab_cfg,
+        positions: np.ndarray,
+        masses: np.ndarray,
     ) -> None:
-        """Add sector centroid scatter markers, colour = occupant mass."""
+        """Add transparent sector patches on the habitat surface.
+
+        Each sector is drawn as a curved surface patch at its actual position
+        in the body frame.  Angular sectors get distinct hues; axial stations
+        get distinct lightness so all 36 combinations are easily distinguished.
+        Patches are semi-transparent (opacity 0.35) so the wireframe and arrows
+        behind them remain visible.
+
+        Works for cylinder/ring (patches on curved cylindrical wall) and toroid
+        (patches as annular fans at the major radius in the equatorial plane).
+        """
         import plotly.graph_objects as go
 
-        fig.add_trace(go.Scatter3d(
-            x=positions[:, 0],
-            y=positions[:, 1],
-            z=positions[:, 2],
-            mode="markers",
-            name="Sectors",
-            marker=dict(
-                size=6,
-                color=masses,
-                colorscale="Viridis",
-                showscale=True,
-                colorbar=dict(
-                    title=dict(text="Sector mass (kg)", side="right"),
-                    x=1.02,
-                    len=0.45,
-                    yanchor="top",
-                    y=0.95,
-                ),
-                opacity=0.85,
-                line=dict(width=0),
-            ),
-            text=[f"Sector {i}<br>Mass: {m:.1f} kg"
-                  for i, m in enumerate(masses)],
-            hoverinfo="text",
-        ))
+        shape = hab_cfg.shape
+        R = hab_cfg.radius
+        n_angular = getattr(hab_cfg, "n_angular", 12)
+        n_axial = getattr(hab_cfg, "n_axial", 3)
+
+        colours = _sector_colours(n_angular, n_axial)
+
+        # Angular half-width for one sector (with a tiny gap so boundaries show)
+        d_theta = 2.0 * np.pi / n_angular
+        half_theta = d_theta / 2.0 * 0.96  # 96 % → 2 % gap on each side
+
+        if shape == "toroid":
+            r_minor = getattr(hab_cfg, "minor_radius", R * 0.25)
+            r_inner = R - r_minor * 0.90
+            r_outer = R + r_minor * 0.90
+            rho_vals = np.array([r_inner, r_outer])
+
+            for idx, (pos, mass) in enumerate(zip(positions, masses)):
+                theta_c = float(np.arctan2(pos[1], pos[0]))
+                th = np.linspace(theta_c - half_theta,
+                                 theta_c + half_theta, 10)
+                th_grid, rho_grid = np.meshgrid(th, rho_vals)
+                x = rho_grid * np.cos(th_grid)
+                y = rho_grid * np.sin(th_grid)
+                z_surf = np.zeros_like(x)
+
+                # Determine which hue to use from the angular position
+                ang_i = int(((theta_c % (2 * np.pi)) / (2 * np.pi)
+                              * n_angular)) % n_angular
+                colour = colours[ang_i]  # toroid has no axial station
+
+                fig.add_trace(go.Surface(
+                    x=x, y=y, z=z_surf,
+                    surfacecolor=np.zeros_like(x),
+                    colorscale=[[0, colour], [1, colour]],
+                    showscale=False,
+                    opacity=0.35,
+                    showlegend=(idx == 0),
+                    name="Sectors" if idx == 0 else "",
+                    hovertemplate=(
+                        f"Sector {idx}<br>Mass: {mass:.1f} kg<extra></extra>"
+                    ),
+                ))
+        else:
+            # Cylinder / ring: draw patches on the curved outer wall
+            L = hab_cfg.length
+            d_z = L / n_axial
+            half_z = d_z / 2.0 * 0.96  # 96 % → 2 % gap top and bottom
+
+            for idx, (pos, mass) in enumerate(zip(positions, masses)):
+                theta_c = float(np.arctan2(pos[1], pos[0]))
+                z_c = float(pos[2])
+
+                th = np.linspace(theta_c - half_theta,
+                                 theta_c + half_theta, 10)
+                z_arr = np.array([z_c - half_z, z_c + half_z])
+                th_grid, z_grid = np.meshgrid(th, z_arr)
+                x = R * np.cos(th_grid)
+                y = R * np.sin(th_grid)
+
+                # Colour by angular hue + axial lightness
+                ang_i = int(((theta_c % (2 * np.pi)) / (2 * np.pi)
+                              * n_angular)) % n_angular
+                ax_j = int(round((z_c - (-L / 2)) / L * n_axial))
+                ax_j = int(np.clip(ax_j, 0, n_axial - 1))
+                colour = colours[ax_j * n_angular + ang_i]
+
+                fig.add_trace(go.Surface(
+                    x=x, y=y, z=z_grid,
+                    surfacecolor=np.zeros_like(th_grid),
+                    colorscale=[[0, colour], [1, colour]],
+                    showscale=False,
+                    opacity=0.35,
+                    showlegend=(idx == 0),
+                    name="Sectors" if idx == 0 else "",
+                    hovertemplate=(
+                        f"Sector {idx}<br>"
+                        f"Angular {ang_i}, Axial {ax_j}<br>"
+                        f"Mass: {mass:.1f} kg<extra></extra>"
+                    ),
+                ))
 
     def _add_tank_markers(
         self, fig, positions: np.ndarray, fill_level: np.ndarray
