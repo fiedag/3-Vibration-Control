@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "habitat-sim"
+version = "0.1.0"
+description = "Rotating space habitat dynamics simulation and RL control"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+rl = [
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.0",
+    "torch>=2.0",
+]
+db = [
+    "sqlalchemy>=2.0",
+    "alembic",
+]
+viz = [
+    "matplotlib>=3.7",
+    "plotly>=5.0",
+]
+config = [
+    "pyyaml",
+    "pydantic>=2.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark",
+    "gymnasium>=0.29",
+]
+all = [
+    "habitat-sim[rl,db,viz,config,dev]",
+]
+
+[project.scripts]
+habitat-run = "habitat_sim.scripts.run_simulation:main"
+habitat-train = "habitat_sim.scripts.train_agent:main"
+
+[tool.setuptools.packages.find]
+include = ["habitat_sim*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.ruff]
+line-length = 95
+target-version = "py310"
