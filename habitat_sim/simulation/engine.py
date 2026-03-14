@@ -80,17 +80,11 @@ class SimulationEngine:
             "tank_config": config.tanks,
         }
 
-        # Build sensor suite
-        accel_positions = config.sensors.accelerometer_positions
-        if accel_positions is None:
-            accel_positions = self.geometry.compute_default_accelerometer_positions(
-                config.sensors.n_accelerometers)
-        else:
-            accel_positions = np.asarray(accel_positions)
-
+        # Build sensor suite (strain gauges use the same sector positions
+        # that are already precomputed for the dynamics model)
         self.sensors = SensorSuite(
             config=config.sensors,
-            accelerometer_positions=accel_positions,
+            sector_positions=self.sector_positions,
             n_sectors=config.sectors.n_total,
             n_tanks=config.tanks.n_tanks_total,
             n_manifolds=config.tanks.n_stations,
@@ -166,12 +160,11 @@ class SimulationEngine:
 
             self.t += dt
 
-        # Compute dω/dt at end of step for accelerometer model
+        # Compute dω/dt for the strain gauge Euler-acceleration term
         self._last_d_omega = self._compute_d_omega(sector_masses, action)
 
         # Build observation
         obs = self.sensors.observe(
-            t=self.t,
             omega=self.state.omega,
             d_omega=self._last_d_omega,
             sector_masses=self._last_sector_masses,
@@ -190,7 +183,7 @@ class SimulationEngine:
     ) -> np.ndarray:
         """Compute current angular acceleration from Euler's equation.
 
-        Used by the accelerometer model after each control step.
+        Used by the strain gauge model after each control step.
         """
         omega = self.state.omega
         tank_masses = self.state.tank_masses
@@ -237,7 +230,6 @@ class SimulationEngine:
             np.zeros(self.config.tanks.n_tanks_total),
         )
         return self.sensors.observe(
-            t=self.t,
             omega=self.state.omega,
             d_omega=d_omega,
             sector_masses=sector_masses,

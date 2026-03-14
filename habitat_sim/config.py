@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
-from typing import Optional
 
 import numpy as np
 
@@ -71,13 +70,7 @@ class MotorConfig:
 @dataclass
 class SensorConfig:
     """Sensor placement and noise parameters."""
-    n_accelerometers: int = 6
-    accelerometer_noise_std: float = 0.001   # m/s² per axis
-    mass_tracker_noise_std: float = 1.0      # kg per sector
-    mass_tracker_update_rate: float = 1.0    # Hz
-
-    # Positions are set up by the geometry module; store as list for serialisation
-    accelerometer_positions: Optional[list] = None
+    strain_gauge_noise_std: float = 10.0     # N per gauge
 
 
 @dataclass

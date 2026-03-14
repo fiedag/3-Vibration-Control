@@ -1,19 +1,20 @@
 """Sensor suite: combines all sensor models into a single observation builder.
 
-Observation vector layout (93 dimensions for 6 accelerometers):
-    [0:18]   accelerometer readings (6 sensors × 3 axes)
-    [18:54]  sector mass estimates (36 sectors)
-    [54:90]  tank fill levels (36 tanks)
-    [90:93]  manifold levels (3 manifolds)
+Observation vector layout (75 dimensions for 36-sector cylinder):
+    [0:36]   strain gauge floor forces (N) — one per sector
+    [36:72]  tank fill levels (36 tanks)
+    [72:75]  manifold levels (3 manifolds)
+
+Sector count and tank/manifold counts vary with habitat geometry; the indices
+above assume the default 12-angular × 3-axial cylinder configuration.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from habitat_sim.config import ExperimentConfig, SensorConfig
-from habitat_sim.sensors.accelerometer import AccelerometerArray
-from habitat_sim.sensors.mass_tracker import MassTracker
+from habitat_sim.config import SensorConfig
+from habitat_sim.sensors.strain_gauge import StrainGaugeArray
 
 
 class SensorSuite:
@@ -22,40 +23,28 @@ class SensorSuite:
     def __init__(
         self,
         config: SensorConfig,
-        accelerometer_positions: np.ndarray,
+        sector_positions: np.ndarray,
         n_sectors: int = 36,
         n_tanks: int = 36,
         n_manifolds: int = 3,
         seed: int = 42,
     ):
         self.config = config
-        self.n_accels = config.n_accelerometers
         self.n_sectors = n_sectors
         self.n_tanks = n_tanks
         self.n_manifolds = n_manifolds
 
-        # Build sensor objects
-        self.accelerometers = AccelerometerArray(
-            positions=accelerometer_positions,
-            noise_std=config.accelerometer_noise_std,
+        self.strain_gauges = StrainGaugeArray(
+            sector_positions=sector_positions,
+            noise_std=config.strain_gauge_noise_std,
         )
 
-        self.mass_tracker = MassTracker(
-            n_sectors=n_sectors,
-            noise_std=config.mass_tracker_noise_std,
-            update_rate=config.mass_tracker_update_rate,
-        )
-
-        # RNG for sensor noise
         self.rng = np.random.default_rng(seed)
 
-        # Observation dimensions
-        self.n_accel_obs = 3 * self.n_accels
-        self.n_obs = self.n_accel_obs + n_sectors + n_tanks + n_manifolds
+        self.n_obs = n_sectors + n_tanks + n_manifolds
 
     def observe(
         self,
-        t: float,
         omega: np.ndarray,
         d_omega: np.ndarray,
         sector_masses: np.ndarray,
@@ -65,31 +54,24 @@ class SensorSuite:
         """Build the full observation vector.
 
         Args:
-            t:               current simulation time.
             omega:           (3,) body-frame angular velocity.
             d_omega:         (3,) body-frame angular acceleration.
-            sector_masses:   (36,) true crew/cargo masses.
-            tank_masses:     (36,) current tank fill levels.
-            manifold_masses: (3,) current manifold levels.
+            sector_masses:   (n_sectors,) true crew/cargo masses.
+            tank_masses:     (n_tanks,) current tank fill levels.
+            manifold_masses: (n_manifolds,) current manifold levels.
 
         Returns:
             (n_obs,) observation vector.
         """
         obs = np.empty(self.n_obs)
 
-        # Accelerometer readings
-        accel_readings = self.accelerometers.measure_all_vectorised(
-            omega, d_omega, self.rng
+        # Strain gauge force readings
+        obs[:self.n_sectors] = self.strain_gauges.measure(
+            omega, d_omega, sector_masses, self.rng
         )
-        obs[:self.n_accel_obs] = accel_readings
 
-        # Sector mass estimates (noisy, rate-limited)
-        mass_est = self.mass_tracker.estimate(t, sector_masses, self.rng)
-        i = self.n_accel_obs
-        obs[i:i + self.n_sectors] = mass_est
-
-        # Tank fill levels (known exactly -- these are the agent's own actuators)
-        i += self.n_sectors
+        # Tank fill levels (known exactly — agent's own actuators)
+        i = self.n_sectors
         obs[i:i + self.n_tanks] = tank_masses
 
         # Manifold levels (known exactly)
@@ -102,7 +84,6 @@ class SensorSuite:
         """Reset sensor state for a new episode."""
         if seed is not None:
             self.rng = np.random.default_rng(seed)
-        self.mass_tracker.reset()
 
     @property
     def observation_dimension(self) -> int:

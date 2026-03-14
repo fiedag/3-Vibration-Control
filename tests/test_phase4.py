@@ -57,7 +57,7 @@ class TestVecEnv:
     def test_obs_action_shapes(self):
         cfg = _fast_config()
         env = build_vec_env(cfg, n_envs=1, seed=0)
-        assert env.observation_space.shape == (93,)
+        assert env.observation_space.shape == (75,)
         assert env.action_space.shape == (36,)
         env.close()
 
@@ -66,14 +66,14 @@ class TestVecEnv:
         env = build_vec_env(cfg, n_envs=2, seed=0)
         assert env.num_envs == 2
         obs = env.reset()
-        assert obs.shape == (2, 93)
+        assert obs.shape == (2, 75)
         env.close()
 
     def test_reset_returns_obs(self):
         cfg = _fast_config()
         env = build_vec_env(cfg, n_envs=1, seed=0)
         obs = env.reset()
-        assert obs.shape == (1, 93)
+        assert obs.shape == (1, 75)
         assert np.all(np.isfinite(obs))
         env.close()
 

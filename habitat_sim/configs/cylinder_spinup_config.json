@@ -1,0 +1,80 @@
+{
+    "habitat": {
+        "shape": "cylinder",
+        "radius": 10.0,
+        "length": 20.0,
+        "minor_radius": 2.0,
+        "wall_thickness": 0.01,
+        "wall_density": 2700.0,
+        "end_plate_thickness": 0.01,
+        "end_plate_density": 2700.0
+    },
+    "sectors": {
+        "n_angular": 12,
+        "n_axial": 3
+    },
+    "tanks": {
+        "n_tanks_per_station": 12,
+        "n_stations": 3,
+        "tank_capacity": 100.0,
+        "total_water_mass": 1800.0,
+        "initial_distribution": "uniform",
+        "q_circ_max": 5.0,
+        "q_axial_max": 1.0,
+        "k_axial": 0.1
+    },
+    "motor": {
+        "profile": "trapezoidal",
+        "max_torque": 500.0,
+        "ramp_time": 60.0,
+        "hold_time": 300.0,
+        "target_spin_rate": 0.2094
+    },
+    "sensors": {
+        "n_accelerometers": 6,
+        "accelerometer_noise_std": 0.001,
+        "mass_tracker_noise_std": 1.0,
+        "mass_tracker_update_rate": 1.0,
+        "accelerometer_positions": null
+    },
+    "simulation": {
+        "dt": 0.01,
+        "duration": 3600.0,
+        "control_dt": 0.1,
+        "dynamics_level": 1
+    },
+    "disturbances": [],
+    "rl": {
+        "algorithm": "SAC",
+        "total_timesteps": 500000,
+        "n_envs": 4,
+        "learning_rate": 0.0003,
+        "buffer_size": 100000,
+        "batch_size": 256,
+        "learning_starts": 5000,
+        "gamma": 0.99,
+        "tau": 0.005,
+        "ent_coef": "auto",
+        "net_arch": [
+            256,
+            256
+        ],
+        "eval_freq": 5000,
+        "n_eval_episodes": 5,
+        "checkpoint_freq": 25000,
+        "log_dir": "./runs",
+        "curriculum": true
+    },
+    "stochastic": {
+        "poisson_crew": false,
+        "n_crew": 6,
+        "mass_per_person": 80.0,
+        "lambda_rate": 0.01,
+        "transfer_duration": 30.0,
+        "micro_impacts": false,
+        "impact_rate": 0.001,
+        "impact_mass_std": 0.1,
+        "impact_duration": 1.0
+    },
+    "seed": 42
+}

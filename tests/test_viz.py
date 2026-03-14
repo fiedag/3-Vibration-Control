@@ -36,7 +36,6 @@ def _make_engine(shape: str = "cylinder"):
         cfg.habitat = replace(cfg.habitat, shape="toroid", minor_radius=5.0)
         cfg.sectors = SectorConfig(n_angular=12, n_axial=1)
         cfg.tanks = replace(cfg.tanks, n_tanks_per_station=12, n_stations=1)
-        cfg.sensors = replace(cfg.sensors, n_accelerometers=2)
     return SimulationEngine(cfg)
 
 

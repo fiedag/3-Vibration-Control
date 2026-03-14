@@ -3,11 +3,10 @@
 Wraps SimulationEngine to provide the standard Gymnasium API
 for reinforcement learning with SAC.
 
-Observation space (93-dim for 6 accelerometers):
-    [0:18]   accelerometer readings (6 × 3 axes)
-    [18:54]  sector mass estimates (36)
-    [54:90]  tank fill levels (36)
-    [90:93]  manifold levels (3)
+Observation space (75-dim for 36-sector cylinder):
+    [0:36]   strain gauge floor forces (N) — one per sector
+    [36:72]  tank fill levels (36)
+    [72:75]  manifold levels (3)
 
 Action space (36-dim):
     Normalised valve commands in [-1, +1], one per tank.
