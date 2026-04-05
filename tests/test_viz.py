@@ -123,13 +123,12 @@ class TestHabitatSceneCylinder:
 
     def test_sector_trace_has_correct_count(self, scene):
         fig = scene.build_figure()
-        # Find the sector scatter trace
+        # Sectors are rendered as one Surface patch per sector
         sector_traces = [t for t in fig.data
                          if hasattr(t, "name") and "sector" in (t.name or "").lower()]
         assert sector_traces, "No sector trace found"
-        trace = sector_traces[0]
         n_sectors = scene.engine.config.sectors.n_total
-        assert len(trace.x) == n_sectors
+        assert len(sector_traces) == n_sectors
 
     def test_tank_trace_has_correct_count(self, scene):
         fig = scene.build_figure()
@@ -179,11 +178,12 @@ class TestHabitatSceneToroid:
 
     def test_sector_count_matches_toroid(self, scene):
         fig = scene.build_figure()
+        # Sectors are rendered as one Surface patch per sector
         sector_traces = [t for t in fig.data
                          if hasattr(t, "name") and "sector" in (t.name or "").lower()]
         assert sector_traces
         # Toroid has n_angular sectors (n_axial=1 → n_total = 12)
-        assert len(sector_traces[0].x) == scene.engine.config.sectors.n_total
+        assert len(sector_traces) == scene.engine.config.sectors.n_total
 
     def test_figure_title_contains_toroid(self, scene):
         fig = scene.build_figure()

@@ -17,10 +17,12 @@ import tempfile
 import numpy as np
 import pytest
 
+from gymnasium import spaces
+
 from habitat_sim.config import (
     ExperimentConfig, MotorConfig, SimulationConfig, RLConfig, reference_config,
 )
-from habitat_sim.control.sac_agent import build_vec_env, build_sac, load_sac
+from habitat_sim.control.sac_agent import build_vec_env, build_sac, load_sac, check_model_compatibility
 from habitat_sim.control.training import evaluate_agent, run_training
 
 
@@ -180,6 +182,102 @@ class TestEvaluateAgent:
         model_path = os.path.join(str(tmp_path / "run"), "final_model")
         results = evaluate_agent(model_path, cfg, n_episodes=3)
         assert len(results["episodes"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Model compatibility checks
+# ---------------------------------------------------------------------------
+
+class TestModelCompatibility:
+    """check_model_compatibility() and evaluate_agent() fail fast and clearly
+    when a model's observation or action space doesn't match the current env."""
+
+    def _save_model_with_wrong_obs(self, tmp_path, correct_cfg) -> str:
+        """Train a small model, then re-save it with a fake 93-dim obs space."""
+        from stable_baselines3 import SAC
+
+        correct_cfg.rl.log_dir = str(tmp_path / "run")
+        run_training(correct_cfg)
+
+        model_path = os.path.join(str(tmp_path / "run"), "final_model")
+        model = SAC.load(model_path)
+
+        # Simulate legacy 93-dim accelerometer sensor suite
+        model.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(93,), dtype=np.float64
+        )
+        wrong_path = str(tmp_path / "legacy_model")
+        model.save(wrong_path)
+        return wrong_path
+
+    def test_obs_mismatch_raises_value_error(self, tmp_path):
+        """evaluate_agent raises ValueError (not a cryptic shape error) on obs mismatch."""
+        cfg = _fast_config()
+        wrong_path = self._save_model_with_wrong_obs(tmp_path, cfg)
+
+        with pytest.raises(ValueError, match="Observation space mismatch"):
+            evaluate_agent(wrong_path, _fast_config(), n_episodes=1)
+
+    def test_obs_mismatch_error_names_both_shapes(self, tmp_path):
+        """The error message must name both the model shape and the env shape."""
+        cfg = _fast_config()
+        wrong_path = self._save_model_with_wrong_obs(tmp_path, cfg)
+
+        with pytest.raises(ValueError) as exc_info:
+            evaluate_agent(wrong_path, _fast_config(), n_episodes=1)
+
+        msg = str(exc_info.value)
+        assert "93" in msg, "Error should mention model's obs shape (93,)"
+        assert "75" in msg, "Error should mention env's obs shape (75,)"
+
+    def test_obs_mismatch_error_mentions_model_path(self, tmp_path):
+        """The error message must include the model path for easy diagnosis."""
+        cfg = _fast_config()
+        wrong_path = self._save_model_with_wrong_obs(tmp_path, cfg)
+
+        with pytest.raises(ValueError) as exc_info:
+            evaluate_agent(wrong_path, _fast_config(), n_episodes=1)
+
+        assert wrong_path in str(exc_info.value)
+
+    def test_compatible_model_does_not_raise(self, tmp_path):
+        """A correctly-matched model passes the check without error."""
+        cfg = _fast_config()
+        cfg.rl.log_dir = str(tmp_path / "run")
+        run_training(cfg)
+
+        model_path = os.path.join(str(tmp_path / "run"), "final_model")
+        # Should complete without raising
+        results = evaluate_agent(model_path, _fast_config(), n_episodes=1)
+        assert "mean_reward" in results
+
+    def test_check_model_compatibility_directly(self, tmp_path):
+        """check_model_compatibility() can be called standalone before evaluation."""
+        from habitat_sim.environment.habitat_env import HabitatEnv
+        from stable_baselines3 import SAC
+
+        cfg = _fast_config()
+        cfg.rl.log_dir = str(tmp_path / "run")
+        run_training(cfg)
+
+        model_path = os.path.join(str(tmp_path / "run"), "final_model")
+        env = HabitatEnv(config=_fast_config())
+
+        # Compatible — should not raise
+        check_model_compatibility(model_path, env)
+
+        # Incompatible — swap obs space and re-save
+        model = SAC.load(model_path)
+        model.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(93,), dtype=np.float64
+        )
+        wrong_path = str(tmp_path / "bad_model")
+        model.save(wrong_path)
+
+        with pytest.raises(ValueError, match="Observation space mismatch"):
+            check_model_compatibility(wrong_path, env)
+
+        env.close()
 
 
 if __name__ == "__main__":

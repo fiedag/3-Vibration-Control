@@ -117,3 +117,72 @@ def load_sac(model_path: str, env: "VecEnv | None" = None) -> "SAC":
     """
     _require_sb3()
     return SAC.load(model_path, env=env)
+
+
+def check_model_compatibility(
+    model_path: str,
+    env: "gymnasium.Env | VecEnv",
+) -> None:
+    """Verify a saved model's observation and action spaces match the given env.
+
+    Call this before running evaluate_agent() or any other evaluation loop to
+    catch sensor-suite mismatches early, before they surface as cryptic array
+    shape errors mid-episode.
+
+    Reads space metadata *directly from the zip archive* (pure ``zipfile`` +
+    ``json``, no network reconstruction) so the check never triggers a PyTorch
+    ``RuntimeError`` due to weight-shape mismatches — even when the stored
+    observation-space shape and the network weights are internally inconsistent
+    (e.g. a model whose obs-space was patched for testing purposes).
+
+    Args:
+        model_path: Path to a .zip file produced by model.save() (with or
+            without the .zip extension).
+        env:        A live HabitatEnv (or VecEnv) built from the current config.
+
+    Raises:
+        ValueError: If observation or action space shapes do not match, with a
+            message that names the expected vs actual shapes and hints at the
+            likely cause (e.g. legacy accelerometer sensor suite).
+        FileNotFoundError: If the zip file does not exist.
+    """
+    import json
+    import zipfile
+
+    # Accept paths with or without the .zip suffix (SB3 convention)
+    zip_path = model_path if model_path.endswith(".zip") else model_path + ".zip"
+
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(f"Model file not found: {zip_path}")
+
+    # SB3 stores metadata as a JSON blob named "data" inside the zip.
+    # The observation_space and action_space entries each contain a "_shape"
+    # key with the raw list of dimensions — no network reconstruction needed.
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        data = json.loads(zf.read("data"))
+
+    model_obs: tuple = tuple(data["observation_space"]["_shape"])
+    model_act: tuple = tuple(data["action_space"]["_shape"])
+    env_obs: tuple = env.observation_space.shape
+    env_act: tuple = env.action_space.shape
+
+    if model_obs != env_obs:
+        raise ValueError(
+            f"Observation space mismatch: model expects {model_obs} but "
+            f"environment produces {env_obs}.\n"
+            f"Model path: {model_path}\n"
+            f"This usually means the model was trained with a different sensor "
+            f"suite. Models trained before commit 85a3e3f used accelerometers "
+            f"(93,); current code uses strain gauges (75,) and these are "
+            f"incompatible. Retrain the model with the current sensor suite, or "
+            f"load a model from runs/poisson_run_2/ or later."
+        )
+
+    if model_act != env_act:
+        raise ValueError(
+            f"Action space mismatch: model expects {model_act} but "
+            f"environment has {env_act}.\n"
+            f"Model path: {model_path}\n"
+            f"Check that n_tanks_per_station and n_stations match between the "
+            f"config used to train the model and the current config."
+        )

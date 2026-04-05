@@ -249,6 +249,10 @@ class HabitatScene:
             H_dir = H / H_mag
             self._add_arrow(fig, np.zeros(3), H_dir * arrow_len,
                             name="H (angular momentum)", color="crimson")
+        else:
+            # H ~ 0 (habitat at rest): draw body z-axis as placeholder
+            self._add_arrow(fig, np.zeros(3), np.array([0.0, 0.0, arrow_len]),
+                            name="H (angular momentum — at rest)", color="crimson")
 
         # Layout
         R = cfg.habitat.radius
@@ -357,7 +361,7 @@ class HabitatScene:
                     showscale=False,
                     opacity=0.35,
                     showlegend=(idx == 0),
-                    name="Sectors" if idx == 0 else "",
+                    name="Sectors",
                     hovertemplate=(
                         f"Sector {idx}<br>Mass: {mass:.1f} kg<extra></extra>"
                     ),
@@ -393,7 +397,7 @@ class HabitatScene:
                     showscale=False,
                     opacity=0.35,
                     showlegend=(idx == 0),
-                    name="Sectors" if idx == 0 else "",
+                    name="Sectors",
                     hovertemplate=(
                         f"Sector {idx}<br>"
                         f"Angular {ang_i}, Axial {ax_j}<br>"

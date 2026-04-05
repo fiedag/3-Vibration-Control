@@ -87,7 +87,7 @@ def run_training(
     eval_cfg.motor = MotorConfig(profile="off")
     eval_env = DummyVecEnv([lambda: HabitatEnv(config=copy.deepcopy(eval_cfg))])
 
-    # Build model — only enable TensorBoard log if tensorboard is installed
+    # Build model ï¿½ only enable TensorBoard log if tensorboard is installed
     try:
         import torch.utils.tensorboard  # noqa: F401
         tb_log: str | None = os.path.join(log_dir, "tb")
@@ -147,10 +147,11 @@ def evaluate_agent(
 
     Returns dict with mean/std reward, nutation, CM offset, and per-episode records.
     """
-    from habitat_sim.control.sac_agent import load_sac
+    from habitat_sim.control.sac_agent import load_sac, check_model_compatibility
     from habitat_sim.environment.habitat_env import HabitatEnv
 
     env = HabitatEnv(config=config)
+    check_model_compatibility(model_path, env)
     model = load_sac(model_path)
 
     rewards, nutations, cm_offsets = [], [], []
